@@ -1,0 +1,403 @@
+require(dplyr)
+format_GWAS_SNP <- function(catalogfile, p_value_threshold){
+  chrom <- chromEnd <- SNP <- marker <- P <- trait <- NULL
+  gwas.hg38 <- readr::read_tsv(catalogfile, col_names = FALSE, skip = 1)
+  if (ncol(gwas.hg38) != 23) stop("The wrong number of columns are present in the
+                                file - are you sure this is the correct file?")
+  
+  colnames(gwas.hg38) <- c("bin", "chrom", "chromStart", "chromEnd", "SNP",
+                           "pubMedID", "author", "pubDate", "journal", "title",
+                           "trait", "initSample", "replSample", "region",
+                           "genes", "riskAllele", "riskAlFreq", "P",
+                           "pValueDesc", "orOrBeta", "ci95", "platform",
+                           "cnv")
+  
+  gwas.hg38.formatted <- gwas.hg38 %>%
+    dplyr::mutate(marker = paste(gsub("chr", "", chrom), chromEnd, sep = ":")) %>%   ## 
+    dplyr::select(SNP, marker, P, trait) %>%
+    dplyr::arrange(P) %>%
+    dplyr::filter(P < p_value_threshold)
+  
+  return(gwas.hg38.formatted)
+}
+
+filter_GWAS_SNP <- function(formatted.gwas, filter){
+  # filter format as "termA|termB" 
+  filter.criteria <- gsub (" \\| ", "\\|", filter)
+  filter.criteria <- trimws(filter.criteria)
+  return(formatted.gwas[grepl(filter.criteria,formatted.gwas$trait,ignore.case = TRUE), ])
+}
+
+prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
+  
+  # Check that plink command works
+  tryCatch({
+    null <- system(command = paste(plink, "--help"), intern = TRUE)
+  }, error = function(cond) {
+    message(paste("Software does not seem to exist:", plink))
+    message("Here's the original error message:")
+    message(cond)
+  } )
+  
+  if (is.data.frame(snps)) {
+    readr::write_tsv(snps, path = "tmp_snps.txt", col_names = TRUE) # write_tsv is faster than the base R write.table function
+    snps <- "tmp_snps.txt"
+  }else if(is.character(snps)){
+    warning("No P value provided, disabling filtering......\n")
+    readr::write_tsv(data.frame("SNP" = snps, "P" = 5e-8), path = "tmp_snps.txt", col_names = T)
+    snps <- "tmp_snps.txt"
+  }else{
+    stop("Input SNP must be a dataframe or a string!")
+  }
+  
+  #gtdf <- file.path(genotypeData, 
+  #"ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes")
+  gtdf <- genotypeData
+  code.clumping <- sprintf(
+    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out clumpedSNPs",
+    plink, gtdf, snps)
+  system(code.clumping)
+  snps.clumped <- data.table::fread("clumpedSNPs.clumped",
+                                    header = T, stringsAsFactors = F)
+  unlink(snps)
+  unlink(list.files(pattern = "clumpedSNPs*"))
+  return(snps.clumped)
+}
+
+getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
+  
+  CHR_A <- BP_A <- CHR_B <- BP_B <- R2 <- SNP_B <- comb <- indexSNP <- ldPos <- NULL
+  
+  if (!is.character(independent_snps)) {
+    readr::write_tsv(independent_snps, path = "tmp_snps.txt", col_names = TRUE)
+    snps <- "tmp_snps.txt"
+  }
+  out <- paste0("ldpartners_", gsub("\\.", "", r2))
+  gtdf <- genotypeData
+  #file.path(genotypeData, 
+  #                "ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes") 
+  
+  ## call plink to get the ld of input snps
+  code.ld <- sprintf(
+    "%s --bfile %s --r2 --ld-snp-list tmp_snps.txt --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
+    plink, gtdf, r2, out)
+  system(code.ld)
+  ld.partners <- data.table::fread(paste0(out, ".ld"), header = T,
+                                   stringsAsFactors = FALSE)
+  ld.partners.r2 <- ld.partners
+  ld.partners.r2[, c("indexPos", "ldPos") := {
+    list(paste(CHR_A, BP_A, sep = ":"),
+         paste(CHR_B, BP_B, sep = ":"))
+  }
+  ]
+  ld.partners.r2 <- ld.partners.r2[, c("SNP_A", "indexPos", "SNP_B", "ldPos", "R2")]
+  oldnames <- colnames(ld.partners.r2)
+  newnames <- c("indexSNP", "indexPos", "ldSNP", "ldPos", "r2")
+  data.table::setnames(ld.partners.r2, old = oldnames, new = newnames)
+  
+  clump <- independent_snps$SP2
+  clump <- lapply(clump, function(x) {
+    x <- unlist(strsplit(x, ","))
+    x <- gsub("\\(1\\)", "", x)
+  })
+  ld <- ld.partners[, 6:7]
+  clump.ld <- lapply(clump, function(x) ld[ld$SNP_B %in% x, ])
+  clump.ld <- lapply(clump.ld, function(x) {
+    x %>% dplyr::arrange(desc(R2)) %>%
+      dplyr::mutate(comb = paste0(SNP_B, " (", round(R2, 2), ")")) %>%
+      dplyr::select(comb)
+  })
+  clump.ld <- lapply(clump.ld, function(x) {
+    x <- do.call(c, x)
+    x <- paste(x, collapse = ", ")
+  })
+  independent_snps$SP2_ld <- unlist(clump.ld)
+  results <- ld.partners.r2 %>% dplyr::group_by(indexSNP) %>%
+    dplyr::summarise(locus_up = min(ldPos), locus_down = max(ldPos))
+  
+  results <- merge(independent_snps, results, by.x = "SNP", by.y = "indexSNP",
+                   keep.all = T)
+  results.snps <- results[ , c(1, 2, 4, 5, 13, 14, 15)]
+  oldnames <- colnames(results.snps)
+  newnames <- c('snp_name', 'chr', 'pos','pvalue',
+                'plink_ld_partners', 'locus_upstream_boundary',
+                'locus_downstream_boundary')
+  data.table::setnames(results.snps, oldnames, newnames)
+  unlink(c("tmp_snps.txt", list.files(pattern = "ldpartners_")))
+  return(list(results.snps, ld.partners.r2))
+}
+
+read_matched_SNPs <- function() ### NOT FINISHED!
+  
+  ### matched SNP set should be obtained before getting ld snps
+  query_similar_SNPs <- function(SNPsnap_collection, nperm = 1000, ld.snps) {
+    
+    collection <- ldSNP <- ldPos <- snp_maf <- gene_count <- friends_ld08 <- NULL
+    HGNC_nearest_gene_snpsnap <- dist_nearest_gene_snpsnap <- gene_count <- NULL
+    rowid <- J <- snpID <- end <- chr <- start <- rsID <- NULL
+    
+    cat("\n\nGenerating matched SNPs for permutation testing.  SNPs will be 
+      matched for MAF, number of genes in SNP locus, and LD 'buddies' at 
+      r2 0.8.\n")
+    cat("Number of permutations =", nperm)
+    cat("\nLoading SNP database - this may take a while.  If this takes longer than 2-3 
+      minutes, you may not have sufficient RAM to proceed.\n")
+    load(snpdatabase)
+    cat("\nDatabase loaded.\n")
+    
+    ld.partners.r2.dt <- data.table::data.table(ld.snps[[2]])
+    ld.partners.r2.dt <- lapply(collection, function(x) {
+      tmp <- merge(ld.partners.r2.dt, x, by.x = "ldPos", 
+                   by.y = "snpID", keep.x = T) %>%
+        dplyr::select(ldSNP, ldPos, snp_maf, gene_count, friends_ld08, 
+                      nearest_gene = HGNC_nearest_gene_snpsnap, 
+                      dist_nearest_gene = dist_nearest_gene_snpsnap)
+    })
+    
+    cat("\nCreating sets of matched SNPs for each permutation - this step may be 
+      time-consuming.\n")
+    
+    matched <- vector("list", 49)
+    
+    ################## TO DO: rewrite this as a foreach loop
+    for (i in seq_along(ld.partners.r2.dt)) {
+      x <- ld.partners.r2.dt[[i]]
+      y <- list()
+      for (j in seq_len(nrow(x))) {
+        gc <- as.numeric(x[j, gene_count])
+        ld <- as.numeric(x[j, friends_ld08])
+        s1 <- collection[[i]][as.numeric(gene_count) < 1.3*gc & 
+                                as.numeric(gene_count) > 0.7*gc]
+        s2 <- s1[as.numeric(friends_ld08) < 1.3*ld & 
+                   as.numeric(friends_ld08) > 0.7*ld]
+        y[[j]] <- s2[sample(nrow(s2), nperm, replace = T), ]
+      }
+      matched[[i]] <- y
+      names(matched)[i] <- names(collection)[i]
+    }
+    
+    matched2 <- unlist(matched, recursive = F)
+    # This bit where we take the ith row from each dataframe in matched2 and rbind
+    # potentially takes forever!  I have finally come up with a data.table solution
+    # that is about 1000x faster!!  
+    
+    # convert to data.table
+    invisible(lapply(matched2, data.table::setattr, name = "class", 
+                     value = c("data.table", "data.frame")))
+    # make one big table
+    bigdata <- data.table::rbindlist(matched2)
+    # generate an index - the number of dataframes will be the number of 
+    # permutations
+    index <- as.character(seq_len(nperm))
+    bigdata[, `:=`(rowid, index)]
+    # set a key based on the row index
+    data.table::setkey(bigdata, rowid)
+    # split on this
+    matched.list <- lapply(index, function(i, j, x) x[i = J(i)], x = bigdata)
+    # Drop the `row id` column
+    invisible(lapply(matched.list, function(x) data.table::set(x, j = "rowid", value = NULL)))
+    # Convert back to data.frame
+    invisible(lapply(matched.list, data.table::setattr, name = 'class', 
+                     value = c('data.frame')))
+    
+    # Convert the matched SNPs into a GRanges object list
+    matched.list <- 
+      lapply(matched.list, function(x) {
+        a <- x %>% dplyr::mutate(chr = paste0("chr", gsub(":.*$", "", snpID)), 
+                                 end = as.numeric(gsub("^.*:", "", snpID)), 
+                                 start = (end - 1)) %>%
+          dplyr::select(chr, start, end, snp = rsID, 
+                        nearest_gene = HGNC_nearest_gene_snpsnap, 
+                        dist_nearest_gene = dist_nearest_gene_snpsnap)
+        a <- a[stats::complete.cases(x), ]
+        return(a)
+      })
+    
+    matched.list.GR <- lapply(matched.list, function(x) {
+      a <- as.data.frame(x)
+      GenomicRanges::makeGRangesFromDataFrame(a,  keep.extra.columns = TRUE, 
+                                              seqnames.field = "chr", start.field = "start",
+                                              end.field = "end")
+    })
+    save(matched.list.GR, file = paste0("matched_SNPs_GR.rda"))
+    return(matched.list.GR)
+  }
+
+
+get_LD_SNP <- function(plink, genotypeData, rsids, r2 = 0.8) {
+  
+  CHR_A <- BP_A <- CHR_B <- BP_B <- R2 <- SNP_B <- comb <- indexSNP <- ldPos <- NULL
+  
+  stopifnot(is.character(rsids))
+  if(any(duplicated(rsids))){
+    warning("Removing duplicated rsids......")
+    rsids <- unique(rsids)
+  }
+  write.table(rsids, file =  "tmp_snps.txt", col.names = F, row.names = F, quote = F)
+  snps <- "tmp_snps.txt"
+  
+  out <- paste0("ldpartners_", gsub("\\.", "", r2))
+  gtdf <- genotypeData
+  #file.path(genotypeData, 
+  #                "ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes") 
+  
+  ## call plink to get the ld of input snps
+  code.ld <- sprintf(
+    "%s --bfile %s --r2 --ld-snp-list tmp_snps.txt --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
+    plink, gtdf, r2, out)
+  system(code.ld)
+  ld.partners <- data.table::fread(paste0(out, ".ld"), header = T,
+                                   stringsAsFactors = FALSE)
+  ld.partners.r2 <- ld.partners
+  ld.partners.r2[, c("indexPos", "ldPos") := {
+    list(paste(CHR_A, BP_A, sep = ":"),
+         paste(CHR_B, BP_B, sep = ":"))
+  }
+  ]
+  ld.partners.r2 <- ld.partners.r2[, c("SNP_A", "indexPos", "SNP_B", "ldPos", "R2")]
+  oldnames <- colnames(ld.partners.r2)
+  newnames <- c("indexSNP", "indexPos", "ldSNP", "ldPos", "r2")
+  data.table::setnames(ld.partners.r2, old = oldnames, new = newnames)
+  
+  unlink(c("tmp_snps.txt", list.files(pattern = "ldpartners_")))
+  return(ld.partners.r2)
+}
+
+GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to test for motif enrichment
+                          bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
+                          SNPSet, ### SNP_set: a GRange object of GWAS associated SNPs 
+                          n_bgs = ncol(bgPeaks), ### optional: number of background peaksets, by default all bgsets in bgPeak matrix
+                          return_plot = F, ### optional: if set TRUE, a list containing histogram will be returned
+                          weights = NULL ### optional: if provided, number of overlaps will be multiplied by this vector. 
+) {
+  # if no weights provided, enrichment analysis will be performed using # of overlaps
+  if(is.null(weights))
+    weights <- rep(1, length(peakSet))
+  stopifnot(length(weights) == length(peakSet))
+
+  # for duplicated peaks, only keeping the peak with highest weight
+  if(sum(duplicated(peakSet))){
+    warning("Removing duplicated peaks from input peak set ..\n")
+    df <- data.frame(peaks = peakSet,
+                     weights = weights) %>% 
+      arrange(peakSet, desc(weights))
+    peakSet <- df$peaks[!duplicated(df$peaks)]
+    warning("Only keeping the highest weight for each peak ..\n")
+    weights <- df$weights[!duplicated(df$peaks)]
+  }
+  if(ncol(bgPeaks) < n_bgs)
+    stop("Backgroud peak matrix must have sufficient number of peakset..\n")
+  
+  if(!all(peakSet %in% rownames(bgPeaks)))
+    stop("One or more of the provided peak indices are out of the background peak set range ..\n")
+  
+  
+  o <- findOverlaps(SNPSet, peakSet %>% StringToGRanges)
+  nLOverlaps <- weights[subjectHits(o)] %>% sum
+  
+  peaks.ix <- rownames(bgPeaks) %in% peakSet
+  # a for loop to test # of bg interations 
+  cat("Start", n_bgs, "permutation tests ..\n")
+  nBGOverlaps <- c() 
+  for( i in 1:n_bgs){
+    bgPeaks.ix <- bgPeaks[peaks.ix,i]
+    bgPeaks.set <- rownames(bgPeaks)[bgPeaks.ix] %>% StringToGRanges
+    o <- findOverlaps(SNPSet, bgPeaks.set)
+    nOverlaps <- weights[subjectHits(o)] %>% sum
+    nBGOverlaps <- c(nBGOverlaps, nOverlaps)
+  }
+  
+  cat("Calculate Z-score based on background distribution ..\n")
+  z_score <- (nLOverlaps - mean(nBGOverlaps)) / sd(nBGOverlaps)
+  pval.perm = sum(nBGOverlaps > nLOverlaps)/length(nBGOverlaps)
+  
+  d <- data.frame(
+    # nCADSNPs = length(o),
+    Z = z_score,
+    pval.z = pnorm(-abs(z_score)), ## one-tailed test ,
+    signed.log10p = -log10( pnorm(-abs(z_score))) * sign(z_score), 
+    pval.perm = pval.perm,
+    signed.log10pperm = -log10(pval.perm) * sign(pval.perm)
+  )
+  if(!return_plot){return(d)}
+  else{
+    require(ggplot2)
+    p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) 
+    d$Obs.overlaps <- nLOverlaps
+    return(list(d,p))
+  }
+}
+
+MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to test for motif enrichment
+                          bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
+                          MarkSet, ### Mark_set: a GRange object of marker
+                          n_bgs = ncol(bgPeaks), ### optional: number of background peaksets, by default all bgsets in bgPeak matrix
+                          return_plot = F, ### optional: if set TRUE, a list containing histogram will be returned
+                          weights = NULL ### optional: if provided, number of overlaps will be multiplied by this vector. 
+) {
+  # if no weights provided, enrichment analysis will be performed using # of overlaps
+  if(is.null(weights))
+    weights <- rep(1, length(peakSet))
+  stopifnot(length(weights) == length(peakSet))
+  
+  # for duplicated peaks, only keeping the peak with highest weight
+  if(sum(duplicated(peakSet))){
+    warning("Removing duplicated peaks from input peak set ..\n")
+    df <- data.frame(peaks = peakSet,
+                     weights = weights) %>% 
+      arrange(peakSet, desc(weights))
+    peakSet <- df$peaks[!duplicated(df$peaks)]
+    warning("Only keeping the highest weight for each peak ..\n")
+    weights <- df$weights[!duplicated(df$peaks)]
+  }
+  if(ncol(bgPeaks) < n_bgs)
+    stop("Backgroud peak matrix must have sufficient number of peakset..\n")
+  
+  if(!all(peakSet %in% rownames(bgPeaks)))
+    stop("One or more of the provided peak indices are out of the background peak set range ..\n")
+  
+  
+  o <- findOverlaps(MarkSet, peakSet %>% StringToGRanges)
+  nLOverlaps <- weights[subjectHits(o)] %>% sum
+  
+  peaks.ix <- rownames(bgPeaks) %in% peakSet
+  # a for loop to test # of bg interations 
+  cat("Start", n_bgs, "permutation tests ..\n")
+  nBGOverlaps <- c() 
+  for( i in 1:n_bgs){
+    bgPeaks.ix <- bgPeaks[peaks.ix,i]
+    bgPeaks.set <- rownames(bgPeaks)[bgPeaks.ix] %>% StringToGRanges
+    o <- findOverlaps(MarkSet, bgPeaks.set)
+    nOverlaps <- weights[subjectHits(o)] %>% sum
+    nBGOverlaps <- c(nBGOverlaps, nOverlaps)
+  }
+  
+  cat("Calculate Z-score based on background distribution ..\n")
+  z_score <- (nLOverlaps - mean(nBGOverlaps)) / sd(nBGOverlaps)
+  pval.perm = sum(nBGOverlaps > nLOverlaps)/length(nBGOverlaps)
+  
+  d <- data.frame(
+    # nCADSNPs = length(o),
+    Z = z_score,
+    pval.z = pnorm(-abs(z_score)), ## one-tailed test ,
+    signed.log10p = -log10( pnorm(-abs(z_score))) * sign(z_score), 
+    pval.perm = pval.perm,
+    signed.log10pperm = -log10(pval.perm) * sign(pval.perm)
+  )
+  if(!return_plot){return(d)}
+  else{
+    require(ggplot2)
+    p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) 
+    d$Obs.overlaps <- nLOverlaps
+    return(list(d,p))
+  }
+}
+
+format_goshifter_SNPs <- function(snpfinallist){
+  ldpos <- snpfinallist[[2]]$"ldPos" %>% 
+    strsplit(split = ":") %>% 
+    unlist %>% 
+    matrix(nrow=dim(snpfinallist[[2]])[1],ncol=2,byrow = T)
+  snp_map <- data.frame("SNP"=snpfinallist[[2]]$"ldSNP", "Chrom"=paste("chr",ldpos[,1],sep = ""), "BP"=ldpos[,2])
+  return(snp_map)
+}
