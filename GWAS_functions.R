@@ -53,27 +53,41 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   #gtdf <- file.path(genotypeData, 
   #"ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes")
   gtdf <- genotypeData
+  out_file <- tempfile(pattern = "clumpedSNPs", tmpdir = tempdir())
   code.clumping <- sprintf(
-    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out clumpedSNPs",
-    plink, gtdf, tmp_name)
+    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out %s",
+    plink, gtdf, tmp_name, out_file)
   system(code.clumping)
-  snps.clumped <- data.table::fread("clumpedSNPs.clumped",
+  snps.clumped <- data.table::fread(paste0(out_file,".clumped"),
                                     header = T, stringsAsFactors = F)
   unlink(tmp_name)
-  unlink(list.files(pattern = "clumpedSNPs*"))
+  unlink(list.files(pattern = paste0(out_file, "*")))
   return(snps.clumped)
 }
 
-getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
+getld_GWAS_SNP <- function(plink, genotypeData, snps, r2 = 0.8, return_clump = FALSE) {
   
   CHR_A <- BP_A <- CHR_B <- BP_B <- R2 <- SNP_B <- comb <- indexSNP <- ldPos <- NULL
   
-  if (!is.character(independent_snps)) {
+  if (is.data.frame(snps)) {
     tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
-    readr::write_tsv(independent_snps, path = tmp_name, col_names = TRUE)
+    readr::write_tsv(snps, path = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
+  }else if(is.character(snps)){
+      if(any(duplicated(snps))){
+        warning("Removing duplicated rsids......\n")
+        snps <- unique(snps)
+      }
+    tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
+    readr::write_tsv(data.frame("SNP" = snps), path = tmp_name, col_names = T)
+  }else{
+    stop("Input SNP must be a dataframe or a string!")
   }
-  out <- paste0("ldpartners_", gsub("\\.", "", r2))
+  
+  out_prefix <- paste0("ldpartners_", gsub("\\.", "", r2))
+  out <- tempfile(pattern = out_prefix, tmpdir = tempdir() )
+  
   gtdf <- genotypeData
+  
   #file.path(genotypeData, 
   #                "ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes") 
   
@@ -88,180 +102,188 @@ getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
   ld.partners.r2[, c("indexPos", "ldPos") := {
     list(paste(CHR_A, BP_A, sep = ":"),
          paste(CHR_B, BP_B, sep = ":"))
-  }
-  ]
-  ld.partners.r2 <- ld.partners.r2[, c("SNP_A", "indexPos", "SNP_B", "ldPos", "R2")]
-  oldnames <- colnames(ld.partners.r2)
-  newnames <- c("indexSNP", "indexPos", "ldSNP", "ldPos", "r2")
-  data.table::setnames(ld.partners.r2, old = oldnames, new = newnames)
-  
-  clump <- independent_snps$SP2
-  clump <- lapply(clump, function(x) {
-    x <- unlist(strsplit(x, ","))
-    x <- gsub("\\(1\\)", "", x)
-  })
-  ld <- ld.partners[, 6:7]
-  clump.ld <- lapply(clump, function(x) ld[ld$SNP_B %in% x, ])
-  clump.ld <- lapply(clump.ld, function(x) {
-    x %>% dplyr::arrange(desc(R2)) %>%
-      dplyr::mutate(comb = paste0(SNP_B, " (", round(R2, 2), ")")) %>%
-      dplyr::select(comb)
-  })
-  clump.ld <- lapply(clump.ld, function(x) {
-    x <- do.call(c, x)
-    x <- paste(x, collapse = ", ")
-  })
-  independent_snps$SP2_ld <- unlist(clump.ld)
-  results <- ld.partners.r2 %>% dplyr::group_by(indexSNP) %>%
-    dplyr::summarise(locus_up = min(ldPos), locus_down = max(ldPos))
-  
-  results <- merge(independent_snps, results, by.x = "SNP", by.y = "indexSNP",
-                   keep.all = T)
-  results.snps <- results[ , c(1, 2, 4, 5, 13, 14, 15)]
-  oldnames <- colnames(results.snps)
-  newnames <- c('snp_name', 'chr', 'pos','pvalue',
-                'plink_ld_partners', 'locus_upstream_boundary',
-                'locus_downstream_boundary')
-  data.table::setnames(results.snps, oldnames, newnames)
-  unlink(c(tmp_name, list.files(pattern = "ldpartners_")))
-  return(list(results.snps, ld.partners.r2))
-}
-
-read_matched_SNPs <- function() ### NOT FINISHED!
-  
-  ### matched SNP set should be obtained before getting ld snps
-  query_similar_SNPs <- function(SNPsnap_collection, nperm = 1000, ld.snps) {
-    
-    collection <- ldSNP <- ldPos <- snp_maf <- gene_count <- friends_ld08 <- NULL
-    HGNC_nearest_gene_snpsnap <- dist_nearest_gene_snpsnap <- gene_count <- NULL
-    rowid <- J <- snpID <- end <- chr <- start <- rsID <- NULL
-    
-    cat("\n\nGenerating matched SNPs for permutation testing.  SNPs will be 
-      matched for MAF, number of genes in SNP locus, and LD 'buddies' at 
-      r2 0.8.\n")
-    cat("Number of permutations =", nperm)
-    cat("\nLoading SNP database - this may take a while.  If this takes longer than 2-3 
-      minutes, you may not have sufficient RAM to proceed.\n")
-    load(snpdatabase)
-    cat("\nDatabase loaded.\n")
-    
-    ld.partners.r2.dt <- data.table::data.table(ld.snps[[2]])
-    ld.partners.r2.dt <- lapply(collection, function(x) {
-      tmp <- merge(ld.partners.r2.dt, x, by.x = "ldPos", 
-                   by.y = "snpID", keep.x = T) %>%
-        dplyr::select(ldSNP, ldPos, snp_maf, gene_count, friends_ld08, 
-                      nearest_gene = HGNC_nearest_gene_snpsnap, 
-                      dist_nearest_gene = dist_nearest_gene_snpsnap)
-    })
-    
-    cat("\nCreating sets of matched SNPs for each permutation - this step may be 
-      time-consuming.\n")
-    
-    matched <- vector("list", 49)
-    
-    ################## TO DO: rewrite this as a foreach loop
-    for (i in seq_along(ld.partners.r2.dt)) {
-      x <- ld.partners.r2.dt[[i]]
-      y <- list()
-      for (j in seq_len(nrow(x))) {
-        gc <- as.numeric(x[j, gene_count])
-        ld <- as.numeric(x[j, friends_ld08])
-        s1 <- collection[[i]][as.numeric(gene_count) < 1.3*gc & 
-                                as.numeric(gene_count) > 0.7*gc]
-        s2 <- s1[as.numeric(friends_ld08) < 1.3*ld & 
-                   as.numeric(friends_ld08) > 0.7*ld]
-        y[[j]] <- s2[sample(nrow(s2), nperm, replace = T), ]
-      }
-      matched[[i]] <- y
-      names(matched)[i] <- names(collection)[i]
     }
-    
-    matched2 <- unlist(matched, recursive = F)
-    # This bit where we take the ith row from each dataframe in matched2 and rbind
-    # potentially takes forever!  I have finally come up with a data.table solution
-    # that is about 1000x faster!!  
-    
-    # convert to data.table
-    invisible(lapply(matched2, data.table::setattr, name = "class", 
-                     value = c("data.table", "data.frame")))
-    # make one big table
-    bigdata <- data.table::rbindlist(matched2)
-    # generate an index - the number of dataframes will be the number of 
-    # permutations
-    index <- as.character(seq_len(nperm))
-    bigdata[, `:=`(rowid, index)]
-    # set a key based on the row index
-    data.table::setkey(bigdata, rowid)
-    # split on this
-    matched.list <- lapply(index, function(i, j, x) x[i = J(i)], x = bigdata)
-    # Drop the `row id` column
-    invisible(lapply(matched.list, function(x) data.table::set(x, j = "rowid", value = NULL)))
-    # Convert back to data.frame
-    invisible(lapply(matched.list, data.table::setattr, name = 'class', 
-                     value = c('data.frame')))
-    
-    # Convert the matched SNPs into a GRanges object list
-    matched.list <- 
-      lapply(matched.list, function(x) {
-        a <- x %>% dplyr::mutate(chr = paste0("chr", gsub(":.*$", "", snpID)), 
-                                 end = as.numeric(gsub("^.*:", "", snpID)), 
-                                 start = (end - 1)) %>%
-          dplyr::select(chr, start, end, snp = rsID, 
-                        nearest_gene = HGNC_nearest_gene_snpsnap, 
-                        dist_nearest_gene = dist_nearest_gene_snpsnap)
-        a <- a[stats::complete.cases(x), ]
-        return(a)
-      })
-    
-    matched.list.GR <- lapply(matched.list, function(x) {
-      a <- as.data.frame(x)
-      GenomicRanges::makeGRangesFromDataFrame(a,  keep.extra.columns = TRUE, 
-                                              seqnames.field = "chr", start.field = "start",
-                                              end.field = "end")
-    })
-    save(matched.list.GR, file = paste0("matched_SNPs_GR.rda"))
-    return(matched.list.GR)
-  }
-
-
-get_LD_SNP <- function(plink, genotypeData, rsids, r2 = 0.8) {
-  
-  CHR_A <- BP_A <- CHR_B <- BP_B <- R2 <- SNP_B <- comb <- indexSNP <- ldPos <- NULL
-  
-  stopifnot(is.character(rsids))
-  if(any(duplicated(rsids))){
-    warning("Removing duplicated rsids......")
-    rsids <- unique(rsids)
-  }
-  write.table(rsids, file =  "tmp_snps.txt", col.names = F, row.names = F, quote = F)
-  snps <- "tmp_snps.txt"
-  
-  out <- paste0("ldpartners_", gsub("\\.", "", r2))
-  gtdf <- genotypeData
-  #file.path(genotypeData, 
-  #                "ALL.chr_merged.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes") 
-  
-  ## call plink to get the ld of input snps
-  code.ld <- sprintf(
-    "%s --bfile %s --r2 --ld-snp-list tmp_snps.txt --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
-    plink, gtdf, r2, out)
-  system(code.ld)
-  ld.partners <- data.table::fread(paste0(out, ".ld"), header = T,
-                                   stringsAsFactors = FALSE)
-  ld.partners.r2 <- ld.partners
-  ld.partners.r2[, c("indexPos", "ldPos") := {
-    list(paste(CHR_A, BP_A, sep = ":"),
-         paste(CHR_B, BP_B, sep = ":"))
-  }
   ]
   ld.partners.r2 <- ld.partners.r2[, c("SNP_A", "indexPos", "SNP_B", "ldPos", "R2")]
   oldnames <- colnames(ld.partners.r2)
   newnames <- c("indexSNP", "indexPos", "ldSNP", "ldPos", "r2")
   data.table::setnames(ld.partners.r2, old = oldnames, new = newnames)
   
-  unlink(c("tmp_snps.txt", list.files(pattern = "ldpartners_")))
+  if(return_clump){ 
+    warning("Make sure the SNP list is pruned before running this command......\n")
+    clump <- snps$SP2
+    clump <- lapply(clump, function(x) {
+        x <- unlist(strsplit(x, ","))
+        x <- gsub("\\(1\\)", "", x)
+      }
+    )
+    ld <- ld.partners[, 6:7]
+    clump.ld <- lapply(clump, function(x) ld[ld$SNP_B %in% x, ])
+    clump.ld <- lapply(clump.ld, function(x) {
+      x %>% dplyr::arrange(desc(R2)) %>%
+        dplyr::mutate(comb = paste0(SNP_B, " (", round(R2, 2), ")")) %>%
+        dplyr::select(comb)
+    })
+    clump.ld <- lapply(clump.ld, function(x) {
+      x <- do.call(c, x)
+      x <- paste(x, collapse = ", ")
+    })
+    snps$SP2_ld <- unlist(clump.ld)
+    results <- ld.partners.r2 %>% dplyr::group_by(indexSNP) %>%
+      dplyr::summarise(locus_up = min(ldPos), locus_down = max(ldPos))
+    
+    results <- merge(independent_snps, results, by.x = "SNP", by.y = "indexSNP",
+                     keep.all = T)
+    results.snps <- results[ , c(1, 2, 4, 5, 13, 14, 15)]
+    oldnames <- colnames(results.snps)
+    newnames <- c('snp_name', 'chr', 'pos','pvalue',
+                  'plink_ld_partners', 'locus_upstream_boundary',
+                  'locus_downstream_boundary')
+    data.table::setnames(results.snps, oldnames, newnames)
+    
+    unlink(c(tmp_name, list.files(pattern = paste0(out, "*"))))
+    return(list(results.snps, ld.partners.r2))
+  }
+  
+  unlink(c(tmp_name, list.files(pattern = paste0(out, "*"))))
   return(ld.partners.r2)
 }
+
+format_goshifter_SNPs <- function(snpfinallist){
+  ldpos <- snpfinallist[[2]]$"ldPos" %>% 
+    strsplit(split = ":") %>% 
+    unlist %>% 
+    matrix(nrow=dim(snpfinallist[[2]])[1],ncol=2,byrow = T)
+  snp_map <- data.frame("SNP"=snpfinallist[[2]]$"ldSNP", "Chrom"=paste("chr",ldpos[,1],sep = ""), "BP"=ldpos[,2])
+  return(snp_map)
+}
+
+liftover_GWAS_SNP <- function(SNPs){
+  require(biomaRt)
+  ensembl <- useEnsembl("snp",dataset = "hsapiens_snp")
+  if(is.data.frame(SNPs)){
+    stopifnot("ldSNP" %in% colnames(SNPs))
+    rsids <- SNPs$ldSNP
+  }else if(is.character(SNPs)){
+    rsids <- SNPs
+  }else{
+    stop("Input SNP must be a dataframe or a string vector!")
+  }
+  #get genomic position
+  SNPs <- getBM(attributes=c("refsnp_id",
+                             "chr_name",
+                             "chrom_start",
+                             "chrom_end"),
+                filters ="snp_filter", 
+                values =rsids, 
+                mart = ensembl, uniqueRows=TRUE)
+  
+  SNPs <- SNPs[SNPs$chr_name %in% 1:22,]
+  SNPs$chr_name <- paste("chr", SNPs$chr_name, sep = "")
+  
+  ## This is to make sure the start position always <= end position of any given snps
+  select <- SNPs$chrom_start>=SNPs$chrom_end
+  SNPs[select,c('chrom_start','chrom_end')] <- SNPs[select,c('chrom_end','chrom_start')]
+  
+  return(SNPs)
+}
+
+# read_matched_SNPs <- function(){ ### NOT FINISHED!
+#   
+#   ### matched SNP set should be obtained before getting ld snps
+#   query_similar_SNPs <- function(SNPsnap_collection, nperm = 1000, ld.snps) {
+#     
+#     collection <- ldSNP <- ldPos <- snp_maf <- gene_count <- friends_ld08 <- NULL
+#     HGNC_nearest_gene_snpsnap <- dist_nearest_gene_snpsnap <- gene_count <- NULL
+#     rowid <- J <- snpID <- end <- chr <- start <- rsID <- NULL
+#     
+#     cat("\n\nGenerating matched SNPs for permutation testing.  SNPs will be 
+#       matched for MAF, number of genes in SNP locus, and LD 'buddies' at 
+#       r2 0.8.\n")
+#     cat("Number of permutations =", nperm)
+#     cat("\nLoading SNP database - this may take a while.  If this takes longer than 2-3 
+#       minutes, you may not have sufficient RAM to proceed.\n")
+#     load(snpdatabase)
+#     cat("\nDatabase loaded.\n")
+#     
+#     ld.partners.r2.dt <- data.table::data.table(ld.snps[[2]])
+#     ld.partners.r2.dt <- lapply(collection, function(x) {
+#       tmp <- merge(ld.partners.r2.dt, x, by.x = "ldPos", 
+#                    by.y = "snpID", keep.x = T) %>%
+#         dplyr::select(ldSNP, ldPos, snp_maf, gene_count, friends_ld08, 
+#                       nearest_gene = HGNC_nearest_gene_snpsnap, 
+#                       dist_nearest_gene = dist_nearest_gene_snpsnap)
+#     })
+#     
+#     cat("\nCreating sets of matched SNPs for each permutation - this step may be 
+#       time-consuming.\n")
+#     
+#     matched <- vector("list", 49)
+#     
+#     ################## TO DO: rewrite this as a foreach loop
+#     for (i in seq_along(ld.partners.r2.dt)) {
+#       x <- ld.partners.r2.dt[[i]]
+#       y <- list()
+#       for (j in seq_len(nrow(x))) {
+#         gc <- as.numeric(x[j, gene_count])
+#         ld <- as.numeric(x[j, friends_ld08])
+#         s1 <- collection[[i]][as.numeric(gene_count) < 1.3*gc & 
+#                                 as.numeric(gene_count) > 0.7*gc]
+#         s2 <- s1[as.numeric(friends_ld08) < 1.3*ld & 
+#                    as.numeric(friends_ld08) > 0.7*ld]
+#         y[[j]] <- s2[sample(nrow(s2), nperm, replace = T), ]
+#       }
+#       matched[[i]] <- y
+#       names(matched)[i] <- names(collection)[i]
+#     }
+#     
+#     matched2 <- unlist(matched, recursive = F)
+#     # This bit where we take the ith row from each dataframe in matched2 and rbind
+#     # potentially takes forever!  I have finally come up with a data.table solution
+#     # that is about 1000x faster!!  
+#     
+#     # convert to data.table
+#     invisible(lapply(matched2, data.table::setattr, name = "class", 
+#                      value = c("data.table", "data.frame")))
+#     # make one big table
+#     bigdata <- data.table::rbindlist(matched2)
+#     # generate an index - the number of dataframes will be the number of 
+#     # permutations
+#     index <- as.character(seq_len(nperm))
+#     bigdata[, `:=`(rowid, index)]
+#     # set a key based on the row index
+#     data.table::setkey(bigdata, rowid)
+#     # split on this
+#     matched.list <- lapply(index, function(i, j, x) x[i = J(i)], x = bigdata)
+#     # Drop the `row id` column
+#     invisible(lapply(matched.list, function(x) data.table::set(x, j = "rowid", value = NULL)))
+#     # Convert back to data.frame
+#     invisible(lapply(matched.list, data.table::setattr, name = 'class', 
+#                      value = c('data.frame')))
+#     
+#     # Convert the matched SNPs into a GRanges object list
+#     matched.list <- 
+#       lapply(matched.list, function(x) {
+#         a <- x %>% dplyr::mutate(chr = paste0("chr", gsub(":.*$", "", snpID)), 
+#                                  end = as.numeric(gsub("^.*:", "", snpID)), 
+#                                  start = (end - 1)) %>%
+#           dplyr::select(chr, start, end, snp = rsID, 
+#                         nearest_gene = HGNC_nearest_gene_snpsnap, 
+#                         dist_nearest_gene = dist_nearest_gene_snpsnap)
+#         a <- a[stats::complete.cases(x), ]
+#         return(a)
+#       })
+#     
+#     matched.list.GR <- lapply(matched.list, function(x) {
+#       a <- as.data.frame(x)
+#       GenomicRanges::makeGRangesFromDataFrame(a,  keep.extra.columns = TRUE, 
+#                                               seqnames.field = "chr", start.field = "start",
+#                                               end.field = "end")
+#     })
+#     save(matched.list.GR, file = paste0("matched_SNPs_GR.rda"))
+#     return(matched.list.GR)
+#   }}
+
 
 GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to test for motif enrichment
                           bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
@@ -393,14 +415,6 @@ MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
   }
 }
 
-format_goshifter_SNPs <- function(snpfinallist){
-  ldpos <- snpfinallist[[2]]$"ldPos" %>% 
-    strsplit(split = ":") %>% 
-    unlist %>% 
-    matrix(nrow=dim(snpfinallist[[2]])[1],ncol=2,byrow = T)
-  snp_map <- data.frame("SNP"=snpfinallist[[2]]$"ldSNP", "Chrom"=paste("chr",ldpos[,1],sep = ""), "BP"=ldpos[,2])
-  return(snp_map)
-}
 plot_enrichment <- function(ztest.list, binwidth = 4){
   require(ggplot2)
   if(!is.list(ztest.list)) {
