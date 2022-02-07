@@ -158,26 +158,29 @@ format_goshifter_SNPs <- function(snpfinallist){
   return(snp_map)
 }
 
-liftover_GWAS_SNP <- function(SNPs){
-  require(biomaRt)
-  ensembl <- useEnsembl("snp",dataset = "hsapiens_snp")
-  if(is.data.frame(SNPs)){
-    stopifnot("ldSNP" %in% colnames(SNPs))
-    rsids <- SNPs$ldSNP
-  }else if(is.character(SNPs)){
-    rsids <- SNPs
+liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL){
+  if(is.null(biomaRt_matrix)){
+    require(biomaRt)
+    ensembl <- useEnsembl("snp",dataset = "hsapiens_snp")
+    if(is.data.frame(SNPs)){
+      stopifnot("ldSNP" %in% colnames(SNPs))
+      rsids <- SNPs$ldSNP
+    }else if(is.character(SNPs)){
+      rsids <- SNPs
+    }else{
+      stop("Input SNP must be a dataframe or a string vector!")
+    }
+    #get genomic position
+    SNPs <- getBM(attributes=c("refsnp_id",
+                               "chr_name",
+                               "chrom_start",
+                               "chrom_end"),
+                  filters ="snp_filter", 
+                  values =rsids, 
+                  mart = ensembl, uniqueRows=TRUE)
   }else{
-    stop("Input SNP must be a dataframe or a string vector!")
+    SNPs <- filter(biomaRt_matrix, refsnp_id %in% SNPs)
   }
-  #get genomic position
-  SNPs <- getBM(attributes=c("refsnp_id",
-                             "chr_name",
-                             "chrom_start",
-                             "chrom_end"),
-                filters ="snp_filter", 
-                values =rsids, 
-                mart = ensembl, uniqueRows=TRUE)
-  
   SNPs <- SNPs[SNPs$chr_name %in% 1:22,]
   SNPs$chr_name <- paste("chr", SNPs$chr_name, sep = "")
   
