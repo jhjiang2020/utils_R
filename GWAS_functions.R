@@ -401,3 +401,21 @@ format_goshifter_SNPs <- function(snpfinallist){
   snp_map <- data.frame("SNP"=snpfinallist[[2]]$"ldSNP", "Chrom"=paste("chr",ldpos[,1],sep = ""), "BP"=ldpos[,2])
   return(snp_map)
 }
+plot_enrichment <- function(ztest.list, binwidth = 4){
+  require(ggplot2)
+  if(!is.list(ztest.list)) {
+    stop("Input must be a list!")
+  }
+  stopifnot(length(ztest.list) >1)
+  if(! is.ggplot(ztest.list[[2]]) ){
+    stop("Make sure a ggplot is returned by setting return_plot to TRUE.")
+  }
+  p <- ztest.list[[2]] +
+    geom_histogram(aes(y=..density..), binwidth = binwidth) +
+    geom_density()+
+    geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", size=2)+
+    annotate("text", x = Inf, y = Inf, label= paste("p-value: ",round(ztest.list[[1]]$pval.z,4), sep = ""),
+             color="red", vjust = 2, hjust = 1)+
+    theme_bw(base_size = 15,base_rect_size = 2, base_line_size = 0.2)
+  return(p)
+}
