@@ -40,12 +40,12 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   } )
   
   if (is.data.frame(snps)) {
-    readr::write_tsv(snps, path = "tmp_snps.txt", col_names = TRUE) # write_tsv is faster than the base R write.table function
-    snps <- "tmp_snps.txt"
+    tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
+    readr::write_tsv(snps, path = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
   }else if(is.character(snps)){
     warning("No P value provided, disabling filtering......\n")
-    readr::write_tsv(data.frame("SNP" = snps, "P" = 5e-8), path = "tmp_snps.txt", col_names = T)
-    snps <- "tmp_snps.txt"
+    tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
+    readr::write_tsv(data.frame("SNP" = snps, "P" = 5e-8), path = tmp_name, col_names = T)
   }else{
     stop("Input SNP must be a dataframe or a string!")
   }
@@ -55,11 +55,11 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   gtdf <- genotypeData
   code.clumping <- sprintf(
     "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out clumpedSNPs",
-    plink, gtdf, snps)
+    plink, gtdf, tmp_name)
   system(code.clumping)
   snps.clumped <- data.table::fread("clumpedSNPs.clumped",
                                     header = T, stringsAsFactors = F)
-  unlink(snps)
+  unlink(tmp_name)
   unlink(list.files(pattern = "clumpedSNPs*"))
   return(snps.clumped)
 }
@@ -69,8 +69,8 @@ getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
   CHR_A <- BP_A <- CHR_B <- BP_B <- R2 <- SNP_B <- comb <- indexSNP <- ldPos <- NULL
   
   if (!is.character(independent_snps)) {
-    readr::write_tsv(independent_snps, path = "tmp_snps.txt", col_names = TRUE)
-    snps <- "tmp_snps.txt"
+    tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
+    readr::write_tsv(independent_snps, path = tmp_name, col_names = TRUE)
   }
   out <- paste0("ldpartners_", gsub("\\.", "", r2))
   gtdf <- genotypeData
@@ -79,8 +79,8 @@ getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
   
   ## call plink to get the ld of input snps
   code.ld <- sprintf(
-    "%s --bfile %s --r2 --ld-snp-list tmp_snps.txt --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
-    plink, gtdf, r2, out)
+    "%s --bfile %s --r2 --ld-snp-list %s --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
+    plink, gtdf, tmp_name, r2, out)
   system(code.ld)
   ld.partners <- data.table::fread(paste0(out, ".ld"), header = T,
                                    stringsAsFactors = FALSE)
@@ -123,7 +123,7 @@ getld_GWAS_SNP <- function(plink, genotypeData, independent_snps, r2 = 0.8) {
                 'plink_ld_partners', 'locus_upstream_boundary',
                 'locus_downstream_boundary')
   data.table::setnames(results.snps, oldnames, newnames)
-  unlink(c("tmp_snps.txt", list.files(pattern = "ldpartners_")))
+  unlink(c(tmp_name, list.files(pattern = "ldpartners_")))
   return(list(results.snps, ld.partners.r2))
 }
 
