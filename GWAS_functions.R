@@ -158,7 +158,10 @@ format_goshifter_SNPs <- function(snpfinallist){
   return(snp_map)
 }
 
-liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL){
+liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE){
+  if(local){
+    return(liftover_GWAS_SNP_local(SNPs))
+  }
   if(is.null(biomaRt_matrix)){
     require(biomaRt)
     ensembl <- useEnsembl("snp",dataset = "hsapiens_snp")
@@ -188,6 +191,27 @@ liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL){
   select <- SNPs$chrom_start>=SNPs$chrom_end
   SNPs[select,c('chrom_start','chrom_end')] <- SNPs[select,c('chrom_end','chrom_start')]
   
+  return(SNPs)
+}
+
+liftover_GWAS_SNP_local <- function(SNPs){
+  require(SNPlocs.Hsapiens.dbSNP151.GRCh38)
+  require(dplyr)
+  
+  if(is.data.frame(SNPs)){
+    stopifnot("ldSNP" %in% colnames(SNPs))
+    rsids <- SNPs$ldSNP
+  }else if(is.character(SNPs)){
+    rsids <- SNPs
+  }else{
+    stop("Input SNP must be a dataframe or a string vector!")
+  }
+  SNPs <- snpsById(SNPlocs.Hsapiens.dbSNP151.GRCh38,rsids) %>% 
+    as.data.frame() %>% 
+    dplyr::filter(seqnames %in% 1:22) %>% 
+    dplyr::mutate(chr_name = paste("chr", seqnames, sep = "")) %>% 
+    dplyr::mutate(chrom_start = pos,chrom_end = pos, refsnp_id = RefSNP_id) %>% 
+    dplyr::select(refsnp_id, chr_name, chrom_start, chrom_end)
   return(SNPs)
 }
 
