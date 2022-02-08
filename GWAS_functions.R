@@ -206,12 +206,32 @@ liftover_GWAS_SNP_local <- function(SNPs){
   }else{
     stop("Input SNP must be a dataframe or a string vector!")
   }
-  SNPs <- snpsById(SNPlocs.Hsapiens.dbSNP151.GRCh38,rsids) %>% 
+  SNPs <- snpsById(SNPlocs.Hsapiens.dbSNP151.GRCh38,rsids, ifnotfound="drop") %>% 
     as.data.frame() %>% 
     dplyr::filter(seqnames %in% 1:22) %>% 
     dplyr::mutate(chr_name = paste("chr", seqnames, sep = "")) %>% 
     dplyr::mutate(chrom_start = pos,chrom_end = pos, refsnp_id = RefSNP_id) %>% 
     dplyr::select(refsnp_id, chr_name, chrom_start, chrom_end)
+  return(SNPs)
+}
+
+snp2gr <- function(SNPs){
+  require(GenomicRanges)
+  stopifnot(is.data.frame(SNPs))
+  stopifnot(ncol(SNPs) == 4)
+  colnames(SNPs) <- c("rsid", "chr", "start", "end")
+  SNPs <- makeGRangesFromDataFrame(SNPs,
+                                  keep.extra.columns=TRUE,
+                                  ignore.strand=FALSE,
+                                  seqinfo=NULL,
+                                  seqnames.field=c("seqnames", "seqname",
+                                                   "chromosome", "chrom",
+                                                   "chr", "chromosome_name",
+                                                   "seqid"),
+                                  start.field="start",
+                                  end.field=c("end", "stop"),
+                                  strand.field="strand",
+                                  starts.in.df.are.0based=FALSE)
   return(SNPs)
 }
 
