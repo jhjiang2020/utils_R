@@ -41,11 +41,11 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   
   if (is.data.frame(snps)) {
     tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
-    readr::write_tsv(snps, path = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
+    readr::write_tsv(snps, file = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
   }else if(is.character(snps)){
     warning("No P value provided, disabling filtering......\n")
     tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
-    readr::write_tsv(data.frame("SNP" = snps, "P" = 5e-8), path = tmp_name, col_names = T)
+    readr::write_tsv(data.frame("SNP" = snps, "P" = 5e-8), file = tmp_name, col_names = T)
   }else{
     stop("Input SNP must be a dataframe or a string!")
   }
@@ -71,14 +71,14 @@ getld_GWAS_SNP <- function(plink, genotypeData, snps, r2 = 0.8, return_clump = F
   
   if (is.data.frame(snps)) {
     tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
-    readr::write_tsv(snps, path = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
+    readr::write_tsv(snps, file = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
   }else if(is.character(snps)){
       if(any(duplicated(snps))){
         warning("Removing duplicated rsids......\n")
         snps <- unique(snps)
       }
     tmp_name <- tempfile(pattern = "tmp", tmpdir = tempdir(), fileext = ".txt")
-    readr::write_tsv(data.frame("SNP" = snps), path = tmp_name, col_names = T)
+    readr::write_tsv(data.frame("SNP" = snps), file = tmp_name, col_names = T)
   }else{
     stop("Input SNP must be a dataframe or a string!")
   }
