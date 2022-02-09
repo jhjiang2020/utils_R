@@ -343,7 +343,10 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
   if(is.null(weights))
     weights <- rep(1, length(peakSet))
   stopifnot(length(weights) == length(peakSet))
-
+  
+  # peaks should be in a character vector
+  stopifnot(is.character(peakSet))
+  
   # for duplicated peaks, only keeping the peak with highest weight
   if(sum(duplicated(peakSet))){
     warning("Removing duplicated peaks from input peak set ..\n")
@@ -359,7 +362,6 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
   
   if(!all(peakSet %in% rownames(bgPeaks)))
     stop("One or more of the provided peak indices are out of the background peak set range ..\n")
-  
   
   o <- findOverlaps(SNPSet, peakSet %>% StringToGRanges)
   nLOverlaps <- weights[subjectHits(o)] %>% sum
