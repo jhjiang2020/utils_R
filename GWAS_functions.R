@@ -377,7 +377,7 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     nOverlaps <- weights[subjectHits(o)] %>% sum
     nBGOverlaps <- c(nBGOverlaps, nOverlaps)
   }
-  
+  OR <- nLOverlaps/mean(nBGOverlaps)
   cat("Calculate Z-score based on background distribution ..\n")
   z_score <- (nLOverlaps - mean(nBGOverlaps)) / sd(nBGOverlaps)
   pval.perm = sum(nBGOverlaps > nLOverlaps)/length(nBGOverlaps)
@@ -388,13 +388,14 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     pval.z = pnorm(-abs(z_score)), ## one-tailed test ,
     signed.log10p = -log10( pnorm(-abs(z_score))) * sign(z_score), 
     pval.perm = pval.perm,
-    signed.log10pperm = -log10(pval.perm) * sign(pval.perm)
+    signed.log10pperm = -log10(pval.perm) * sign(pval.perm),
+    Obs.overlaps = nLOverlaps,
+    OR = OR
   )
   if(!return_plot){return(d)}
   else{
     require(ggplot2)
     p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) 
-    d$Obs.overlaps <- nLOverlaps
     return(list(d,p))
   }
 }
