@@ -206,6 +206,13 @@ liftover_GWAS_SNP_local <- function(SNPs){
   }else{
     stop("Input SNP must be a dataframe or a string vector!")
   }
+  
+  keep <- gsub(pattern = "(rs)+[0-9]+", replacement = "\\1", rsids) == "rs"
+  n_remove = sum(!keep)
+  warning(paste0("Removing ", n_remove, " SNPs that do not have rsid...\n" ))
+  rsids <- rsids[keep]
+
+  
   SNPs <- snpsById(SNPlocs.Hsapiens.dbSNP151.GRCh38,rsids, ifnotfound="drop") %>% 
     as.data.frame() %>% 
     dplyr::filter(seqnames %in% 1:22) %>% 
