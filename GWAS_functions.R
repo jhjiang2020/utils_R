@@ -481,12 +481,19 @@ plot_enrichment <- function(ztest.list, binwidth = 4){
   if(! is.ggplot(ztest.list[[2]]) ){
     stop("Make sure a ggplot is returned by setting return_plot to TRUE.")
   }
+  
+  pval <- round(ztest.list[[1]]$pval.z,4)
+  if(pval == 0){
+    pval.label = "p-value < 0.0001"
+  }else{
+    pval.label = paste("p-value: ", pval, sep = "")
+  }
   p <- ztest.list[[2]] +
     geom_histogram(aes(y=..density..), binwidth = binwidth) +
     geom_density()+
     geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", size=2)+
-    annotate("text", x = Inf, y = Inf, label= paste("p-value: ",round(ztest.list[[1]]$pval.z,4), sep = ""),
-             color="red", vjust = 2, hjust = 1)+
-    theme_bw(base_size = 15,base_rect_size = 2, base_line_size = 0.2)
+    ggtitle(label = pval.label)+
+    theme_bw(base_size = 15,base_rect_size = 2, base_line_size = 0.2) + 
+    theme(plot.title = element_text(color = "red", size = 12, face = "bold", hjust = 1))
   return(p)
 }
