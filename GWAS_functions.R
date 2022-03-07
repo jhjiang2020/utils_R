@@ -343,7 +343,7 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
                           bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
                           SNPSet, ### SNP_set: a GRange object of GWAS associated SNPs 
                           n_bgs = ncol(bgPeaks), ### optional: number of background peaksets, by default all bgsets in bgPeak matrix
-                          return_plot = F, ### optional: if set TRUE, a list containing histogram will be returned
+                          return_bg = F, ### optional: if set TRUE, a list containing background overlaps will be returned
                           weights = NULL ### optional: if provided, number of overlaps will be multiplied by this vector. 
 ) {
   # if no weights provided, enrichment analysis will be performed using # of overlaps
@@ -399,11 +399,9 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     Obs.overlaps = nLOverlaps,
     OR = OR
   )
-  if(!return_plot){return(d)}
+  if(!return_bg){return(d)}
   else{
-    require(ggplot2)
-    p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) 
-    return(list(d,p))
+    return(list(d,nBGOverlaps))
   }
 }
 
@@ -411,7 +409,7 @@ MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
                           bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
                           MarkSet, ### Mark_set: a GRange object of marker
                           n_bgs = ncol(bgPeaks), ### optional: number of background peaksets, by default all bgsets in bgPeak matrix
-                          return_plot = F, ### optional: if set TRUE, a list containing histogram will be returned
+                          return_bg = F, ### optional: if set TRUE, a list containing background overlaps will be returned
                           weights = NULL ### optional: if provided, number of overlaps will be multiplied by this vector. 
 ) {
   # if no weights provided, enrichment analysis will be performed using # of overlaps
@@ -451,6 +449,8 @@ MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     nBGOverlaps <- c(nBGOverlaps, nOverlaps)
   }
   
+  
+  OR <- nLOverlaps/mean(nBGOverlaps)
   cat("Calculate Z-score based on background distribution ..\n")
   z_score <- (nLOverlaps - mean(nBGOverlaps)) / sd(nBGOverlaps)
   pval.perm = sum(nBGOverlaps > nLOverlaps)/length(nBGOverlaps)
@@ -461,34 +461,41 @@ MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     pval.z = pnorm(-abs(z_score)), ## one-tailed test ,
     signed.log10p = -log10( pnorm(-abs(z_score))) * sign(z_score), 
     pval.perm = pval.perm,
-    signed.log10pperm = -log10(pval.perm) * sign(pval.perm)
+    signed.log10pperm = -log10(pval.perm) * sign(pval.perm),
+    Obs.overlaps = nLOverlaps,
+    OR = OR
   )
-  if(!return_plot){return(d)}
+  
+  if(!return_bg){return(d)}
   else{
-    require(ggplot2)
-    p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) 
-    d$Obs.overlaps <- nLOverlaps
-    return(list(d,p))
+    return(list(d,nBGOverlaps))
   }
 }
 
-plot_enrichment <- function(ztest.list, binwidth = 4){
+plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
+                            perm.p = F, ## whether to use permutation-based p values
+                            binwidth = 4){
   require(ggplot2)
   if(!is.list(ztest.list)) {
     stop("Input must be a list!")
   }
   stopifnot(length(ztest.list) >1)
   if(! is.ggplot(ztest.list[[2]]) ){
-    stop("Make sure a ggplot is returned by setting return_plot to TRUE.")
+    stop("Make sure a ggplot is returned by setting return_bg to TRUE.")
   }
   
-  pval <- round(ztest.list[[1]]$pval.z,4)
+  if(!perm.p){
+    pval <- round(ztest.list[[1]]$pval.z,4)
+  }else{
+    pval <- round(ztest.list[[1]]$pval.perm,4)
+  }
   if(pval == 0){
     pval.label = "p-value < 0.0001"
   }else{
     pval.label = paste("p-value: ", pval, sep = "")
   }
-  p <- ztest.list[[2]] +
+  nBGOverlaps <- ztest.list[[2]]
+  p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) +
     geom_histogram(aes(y=..density..), binwidth = binwidth) +
     geom_density()+
     geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", size=2)+
