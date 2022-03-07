@@ -1,4 +1,5 @@
 require(dplyr)
+require(Signac)
 format_GWAS_SNP <- function(catalogfile, p_value_threshold){
   chrom <- chromEnd <- SNP <- marker <- P <- trait <- NULL
   gwas.hg38 <- readr::read_tsv(catalogfile, col_names = FALSE, skip = 1)
