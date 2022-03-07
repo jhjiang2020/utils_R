@@ -480,9 +480,11 @@ plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
     stop("Input must be a list!")
   }
   stopifnot(length(ztest.list) >1)
-  if(! is.ggplot(ztest.list[[2]]) ){
-    stop("Make sure a ggplot is returned by setting return_bg to TRUE.")
+  stopifnot(length(ztest.list[[2]])>1)
+  if(length(ztest.list[[2]]) < 100){
+    warning("# of bg peaksets might be too small...\n Consider n_bgs in Z test?")  
   }
+  
   
   if(!perm.p){
     pval <- round(ztest.list[[1]]$pval.z,4)
