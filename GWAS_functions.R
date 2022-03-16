@@ -406,7 +406,7 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
   }
 }
 
-MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to test for motif enrichment
+MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to test for enrichment
                           bgPeaks, ### bg_peaks: matrix of background peak selection iterations by chromVAR
                           MarkSet, ### Mark_set: a GRange object of marker
                           n_bgs = ncol(bgPeaks), ### optional: number of background peaksets, by default all bgsets in bgPeak matrix
@@ -507,3 +507,4 @@ plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
     theme(plot.title = element_text(color = "red", size = 12, face = "bold", hjust = 1))
   return(p)
 }
+
