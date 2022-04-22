@@ -1,6 +1,7 @@
 require(patchwork)
 require(GenomicRanges)
 require(ggplot2)
+require(ggrepel)
 
 SNPPlot <- function(
   region,
@@ -43,7 +44,7 @@ SNPPlot <- function(
       geom_segment(aes(x = (start+end)/2, y = -0.3, xend = (start+end)/2, yend = 0.3, color=color),
                    size = 1,
                    data = SNP.df) +
-      geom_text(
+      geom_text_repel(
         data = SNP.df,
         mapping = aes(x = (start+end)/2, y = -0.5, label = rsid),
         position = position_dodge( width = 7),
