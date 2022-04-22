@@ -1,5 +1,8 @@
-require(dplyr)
-require(Signac)
+suppressPackageStartupMessages({
+  require(dplyr)
+  require(Signac)  
+})
+
 format_GWAS_SNP <- function(catalogfile, p_value_threshold){
   chrom <- chromEnd <- SNP <- marker <- P <- trait <- NULL
   gwas.hg38 <- readr::read_tsv(catalogfile, col_names = FALSE, skip = 1)
@@ -159,7 +162,7 @@ format_goshifter_SNPs <- function(snpfinallist){
   return(snp_map)
 }
 
-liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE){
+liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE, allele=FALSE){
   if(local){
     return(liftover_GWAS_SNP_local(SNPs))
   }
@@ -174,11 +177,21 @@ liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE){
     }else{
       stop("Input SNP must be a dataframe or a string vector!")
     }
+    if(allele){
+      attributes =c("refsnp_id",
+                    "chr_name",
+                    "chrom_start",
+                    "chrom_end",
+                    "allele_1",
+                    "minor_allele")
+    }else{
+      attributes = c("refsnp_id",
+                     "chr_name",
+                     "chrom_start",
+                     "chrom_end")
+    }
     #get genomic position
-    SNPs <- getBM(attributes=c("refsnp_id",
-                               "chr_name",
-                               "chrom_start",
-                               "chrom_end"),
+    SNPs <- getBM(attributes=attributes,
                   filters ="snp_filter", 
                   values =rsids, 
                   mart = ensembl, uniqueRows=TRUE)
@@ -224,7 +237,9 @@ liftover_GWAS_SNP_local <- function(SNPs){
 }
 
 snp2gr <- function(SNPs){
-  require(GenomicRanges)
+  suppressPackageStartupMessages(
+    require(GenomicRanges)
+  )
   stopifnot(is.data.frame(SNPs))
   stopifnot(ncol(SNPs) == 4)
   colnames(SNPs) <- c("rsid", "chr", "start", "end")
