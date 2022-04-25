@@ -59,7 +59,7 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   gtdf <- genotypeData
   out_file <- tempfile(pattern = "clumpedSNPs", tmpdir = tempdir())
   code.clumping <- sprintf(
-    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out %s --allow-extra-chr",
+    "%s --bfile %s --clump-p1 5e-8 --clump-kb 1000 --clump-r2 0.1 --clump %s --out %s --allow-extra-chr",
     plink, gtdf, tmp_name, out_file)
   system(code.clumping)
   snps.clumped <- data.table::fread(paste0(out_file,".clumped"),
