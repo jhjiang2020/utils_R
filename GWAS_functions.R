@@ -262,7 +262,7 @@ pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
   
   # Run bcftools
   out_file <- tempfile(pattern = "SNP_return", tmpdir = tempdir())
-  format = '%CHROM %POS %ID %REF %ALT\n'
+  format = "'%CHROM %POS %ID %REF %ALT\n'"
   code.query <- sprintf(
     "%s query -R %s -f %s %s > %s",
     bcftools, tmp_name, vcf, format, out_file)
