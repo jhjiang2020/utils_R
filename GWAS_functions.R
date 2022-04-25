@@ -59,7 +59,7 @@ prune_GWAS_SNP <- function(plink = NULL, snps, genotypeData) {
   gtdf <- genotypeData
   out_file <- tempfile(pattern = "clumpedSNPs", tmpdir = tempdir())
   code.clumping <- sprintf(
-    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out %s",
+    "%s --bfile %s --clump-p1 5e-8 --clump-kb 500 --clump-r2 0.1 --clump %s --out %s --allow-extra-chr",
     plink, gtdf, tmp_name, out_file)
   system(code.clumping)
   snps.clumped <- data.table::fread(paste0(out_file,".clumped"),
@@ -97,7 +97,7 @@ getld_GWAS_SNP <- function(plink, genotypeData, snps, r2 = 0.8, return_clump = F
   
   ## call plink to get the ld of input snps
   code.ld <- sprintf(
-    "%s --bfile %s --r2 --ld-snp-list %s --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s",
+    "%s --bfile %s --r2 --ld-snp-list %s --ld-window-kb 1000 --ld-window 99999 --ld-window-r2 %s --out %s --allow-extra-chr",
     plink, gtdf, tmp_name, r2, out)
   system(code.ld)
   ld.partners <- data.table::fread(paste0(out, ".ld"), header = T,
@@ -164,6 +164,9 @@ format_goshifter_SNPs <- function(snpfinallist){
 
 liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE, allele=FALSE){
   if(local){
+    if(allele){
+      stop("local mode does not return ref / alt alleles!")
+    }
     return(liftover_GWAS_SNP_local(SNPs))
   }
   if(is.null(biomaRt_matrix)){
