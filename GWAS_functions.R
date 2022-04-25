@@ -258,7 +258,7 @@ pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
   stopifnot(ncol(SNP_pos)==2)
 
   tmp_name <- tempfile(pattern = "SNP_pos", tmpdir = tempdir(), fileext = ".txt")
-  readr::write_tsv(SNP_pos, file = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
+  readr::write_tsv(SNP_pos, file = tmp_name, col_names = FALSE) # write_tsv is faster than the base R write.table function
   
   # Run bcftools
   out_file <- tempfile(pattern = "SNP_return", tmpdir = tempdir())
