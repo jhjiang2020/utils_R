@@ -265,7 +265,7 @@ pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
   format = "'%CHROM %POS %ID %REF %ALT\n'"
   code.query <- sprintf(
     "%s query -R %s -f %s %s > %s",
-    bcftools, tmp_name, vcf, format, out_file)
+    bcftools, tmp_name, format, vcf, out_file)
   system(code.query)
   
   
