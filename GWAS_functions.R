@@ -239,6 +239,43 @@ liftover_GWAS_SNP_local <- function(SNPs){
   return(SNPs)
 }
 
+## getting rsids out of dbSNP.vcf files using hg38 positions
+pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
+                     SNP_pos, ## two column CHROM POS data.frame
+                     vcf ## VCF file downloaded from dbSNP hg38 release, need to be bgzipped 
+                     ) {
+  
+  # Check that bcftools command works
+  tryCatch({
+    null <- system(command = paste(bcftools, "--help"), intern = TRUE)
+  }, error = function(cond) {
+    message(paste("Software does not seem to exist:", bcftools))
+    message("Here's the original error message:")
+    message(cond)
+  } )
+  
+  stopifnot(is.data.frame(SNP_pos))
+  stopifnot(ncol(SNP_pos)==2)
+
+  tmp_name <- tempfile(pattern = "SNP_pos", tmpdir = tempdir(), fileext = ".txt")
+  readr::write_tsv(SNP_pos, file = tmp_name, col_names = TRUE) # write_tsv is faster than the base R write.table function
+  
+  # Run bcftools
+  out_file <- tempfile(pattern = "SNP_return", tmpdir = tempdir())
+  code.query <- sprintf(
+    "%s query -R %s -f '%CHROM %POS %ID %REF %ALT\n' %s > %s",
+    bcftools, tmp_name, vcf, out_file)
+  system(code.query)
+  
+  
+  snps.annotated <- data.table::fread(out_file, header = T, stringsAsFactors = F)
+  unlink(tmp_name)
+  unlink(out_file)
+  return(snps.annotated)
+}
+
+
+
 snp2gr <- function(SNPs){
   suppressPackageStartupMessages(
     require(GenomicRanges)
