@@ -114,43 +114,15 @@ getld_GWAS_SNP <- function(plink, genotypeData, snps, r2 = 0.8, return_clump = F
   data.table::setnames(ld.partners.r2, old = oldnames, new = newnames)
   
   if(return_clump){ 
-    warning("Make sure the SNP list is pruned before running this command......\n")
-    clump <- snps$SP2
-    clump <- lapply(clump, function(x) {
-        x <- unlist(strsplit(x, ","))
-        x <- gsub("\\(1\\)", "", x)
-      }
-    )
-    ld <- ld.partners[, 6:7]
-    clump.ld <- lapply(clump, function(x) ld[ld$SNP_B %in% x, ])
-    clump.ld <- lapply(clump.ld, function(x) {
-      x %>% dplyr::arrange(desc(R2)) %>%
-        dplyr::mutate(comb = paste0(SNP_B, " (", round(R2, 2), ")")) %>%
-        dplyr::select(comb)
-    })
-    clump.ld <- lapply(clump.ld, function(x) {
-      x <- do.call(c, x)
-      x <- paste(x, collapse = ", ")
-    })
-    snps$SP2_ld <- unlist(clump.ld)
-    results <- ld.partners.r2 %>% dplyr::group_by(indexSNP) %>%
-      dplyr::summarise(locus_up = min(ldPos), locus_down = max(ldPos))
-    
-    results <- merge(independent_snps, results, by.x = "SNP", by.y = "indexSNP",
-                     keep.all = T)
-    results.snps <- results[ , c(1, 2, 4, 5, 13, 14, 15)]
-    oldnames <- colnames(results.snps)
-    newnames <- c('snp_name', 'chr', 'pos','pvalue',
-                  'plink_ld_partners', 'locus_upstream_boundary',
-                  'locus_downstream_boundary')
-    data.table::setnames(results.snps, oldnames, newnames)
-    
-    unlink(c(tmp_name, list.files(pattern = paste0(out, "*"))))
-    return(list(results.snps, ld.partners.r2))
+    warning("Make sure the SNP list is pruned when setting return_clump to TRUE......\n")
+    return(ld.partners.r2)
   }
-  
+  ld.snps <- ld.partners.r2 %>% 
+    tidyr::separate(ldSNP, c("chr", "pos"), ":") %>% 
+    select(chr, pos) %>% 
+    distinct()
   unlink(c(tmp_name, list.files(pattern = paste0(out, "*"))))
-  return(ld.partners.r2)
+  return(ld.snps)
 }
 
 format_goshifter_SNPs <- function(snpfinallist){
