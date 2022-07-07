@@ -242,7 +242,7 @@ pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
   
   
   snps.annotated <- data.table::fread(out_file, header = F, stringsAsFactors = F)
-  colnames(snps.annotated) <- c("chr", "pos", "rsid", "ref", "alt")
+  colnames(snps.annotated) <- c("chr", "pos", "end", "rsid", "ref", "alt")
   unlink(tmp_name)
   unlink(out_file)
   return(snps.annotated)
