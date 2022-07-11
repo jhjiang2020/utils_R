@@ -504,7 +504,9 @@ MarkPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
 
 plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
                             perm.p = F, ## whether to use permutation-based p values
-                            binwidth = 4){
+                            binwidth = 4,
+                            title=NULL ## plot title
+                            ){
   require(ggplot2)
   if(!is.list(ztest.list)) {
     stop("Input must be a list!")
@@ -526,14 +528,17 @@ plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
   }else{
     pval.label = paste("p-value: ", pval, sep = "")
   }
+
   nBGOverlaps <- ztest.list[[2]]
   p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) +
     geom_histogram(aes(y=..density..), binwidth = binwidth) +
     geom_density()+
     geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", size=2)+
-    ggtitle(label = pval.label)+
+    ggtitle(label=title,
+            subtitle= pval.label) + 
     theme_bw(base_size = 15,base_rect_size = 2, base_line_size = 0.2) + 
-    theme(plot.title = element_text(color = "red", size = 12, face = "bold", hjust = 1))
+    theme(plot.title = element_text(color = "black", size = 12, face = "bold", hjust = 0),
+          plot.subtitle = element_text(color = "red", size = 10, face = "bold", hjust = 1))
   return(p)
 }
 
