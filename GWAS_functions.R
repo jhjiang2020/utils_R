@@ -248,6 +248,44 @@ pos2rsid <- function(bcftools = "bcftools", ## require bcftools to be installed
   return(snps.annotated)
 }
 
+## getting posid (hg38) out of dbSNP.vcf files using rsids
+rsid2pos<- function(bcftools = "bcftools", ## require bcftools to be installed
+                     SNP_rsid, ## a character list of rsids
+                     vcf ## VCF file downloaded from dbSNP hg38 release, need to be bgzipped 
+) {
+  
+  # Check that bcftools command works
+  tryCatch({
+    null <- system(command = paste(bcftools, "--help"), intern = TRUE)
+  }, error = function(cond) {
+    message(paste("Software does not seem to exist:", bcftools))
+    message("Here's the original error message:")
+    message(cond)
+  } )
+  
+  stopifnot(is.character(SNP_rsid))
+  ###
+  
+  tmp_name <- tempfile(pattern = "SNP_rsid", tmpdir = tempdir(), fileext = ".txt")
+  readr::write_tsv(SNP_rsid, file = tmp_name, col_names = FALSE) # write_tsv is faster than the base R write.table function
+  
+  # Run bcftools
+  out_file <- tempfile(pattern = "SNP_return", tmpdir = tempdir())
+  filter_format = paste0("'%ID=@", tmp_name, "'")
+  output_format = "'%CHROM %POS %END %ID %REF %ALT %CHROM:%POS\n'"
+  code.query <- sprintf(
+    "%s query -i %s -f %s %s > %s",
+    bcftools, filter_format, output_format, vcf, out_file)
+  system(code.query)
+  
+  
+  snps.annotated <- data.table::fread(out_file, header = F, stringsAsFactors = F)
+  colnames(snps.annotated) <- c("chr", "pos", "end", "rsid", "ref", "alt", "posid")
+  unlink(tmp_name)
+  unlink(out_file)
+  return(snps.annotated)
+}
+
 
 
 snp2gr <- function(SNPs){
