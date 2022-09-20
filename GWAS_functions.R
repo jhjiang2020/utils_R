@@ -424,13 +424,13 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
   
   # for duplicated peaks, only keeping the peak with highest weight
   if(sum(duplicated(peakSet))){
-    warning("Removing duplicated peaks from input peak set ..\n")
+    warning("Summarising weights for duplicated peaks from input peak set ..\n")
     df <- data.frame(peaks = peakSet,
                      weights = weights) %>% 
-      arrange(peakSet, desc(weights))
-    peakSet <- df$peaks[!duplicated(df$peaks)]
-    warning("Only keeping the highest weight for each peak ..\n")
-    weights <- df$weights[!duplicated(df$peaks)]
+      group_by(peaks) %>% 
+      summarise(score = sum(weights))
+    peakSet <- df$peaks
+    weights <- df$score
   }
   if(ncol(bgPeaks) < n_bgs)
     stop("Backgroud peak matrix must have sufficient number of peakset..\n")
