@@ -465,7 +465,8 @@ GWASPeakZtest <- function(peakSet, ### peak_set: vector of peak ids you wish to 
     pval.perm = pval.perm,
     signed.log10pperm = -log10(pval.perm) * sign(pval.perm),
     Obs.overlaps = nLOverlaps,
-    OR = OR
+    OR = OR,
+    sizes = length(peakSet)
   )
   if(!return_bg){return(d)}
   else{
