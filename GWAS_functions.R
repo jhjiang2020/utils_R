@@ -157,6 +157,7 @@ liftover_GWAS_SNP <- function(SNPs, biomaRt_matrix = NULL, local = FALSE, allele
                     "chr_name",
                     "chrom_start",
                     "chrom_end",
+                    "allele",
                     "allele_1",
                     "minor_allele")
     }else{
