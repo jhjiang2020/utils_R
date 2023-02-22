@@ -69,6 +69,8 @@
 #' non-zero feature value. 
 #' }
 #' @export 
+
+require(Matrix)
 wilcoxauc <- function(X, ...) {
   UseMethod('wilcoxauc')
 }
@@ -244,18 +246,18 @@ top_markers <- function(res, n=10, auc_min=0, pval_max=1, padj_max=1,
                         pct_in_min=0, pct_out_max=100) {
   res %>% 
     dplyr::filter(
-      .data$pval <= pval_max & 
-        .data$padj <= padj_max &
-        .data$auc >= auc_min & 
-        .data$pct_in >= pct_in_min &
-        .data$pct_out <= pct_out_max
+      pval <= pval_max & 
+        padj <= padj_max &
+        auc >= auc_min & 
+        pct_in >= pct_in_min &
+        pct_out <= pct_out_max
     ) %>%
-    dplyr::group_by(.data$group) %>%
-    dplyr::top_n(n = n, wt = .data$auc) %>% 
-    dplyr::mutate(rank = rank(-.data$auc, ties.method = 'random')) %>% 
+    dplyr::group_by(group) %>%
+    dplyr::top_n(n = n, wt = auc) %>% 
+    dplyr::mutate(rank = rank(-auc, ties.method = 'random')) %>% 
     dplyr::ungroup() %>% 
-    dplyr::select(.data$feature, .data$group, .data$rank) %>% 
-    tidyr::spread(.data$group, .data$feature, fill = NA)
+    dplyr::select(feature, group, rank) %>% 
+    tidyr::spread(group, feature, fill = NA)
 }
 
 
@@ -386,17 +388,17 @@ tidy_results <- function(wide_res, features, groups) {
   res$feature <- rep(features, times = length(groups))
   res$group <- rep(groups, each = length(features))
   res %>% dplyr::select(
-    .data$feature, 
-    .data$group, 
-    .data$avgExpr, 
-    .data$logFC, 
-    .data$cohen_d,
-    .data$statistic, 
-    .data$auc, 
-    .data$pval, 
-    .data$padj, 
-    .data$pct_in, 
-    .data$pct_out
+    feature, 
+    group, 
+    avgExpr, 
+    logFC, 
+    cohen_d,
+    statistic, 
+    auc, 
+    pval, 
+    padj, 
+    pct_in, 
+    pct_out
   )
 }
 
