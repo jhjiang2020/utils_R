@@ -27,9 +27,8 @@ SNPPlot <- function(
   
   
   # subset to covered range
-  SNP.intersect <- subsetByOverlaps(x = SNP, ranges = region)
-  SNP.df <- as.data.frame(x = SNP.intersect)
-  SNP.df$rsid <- label
+  SNP$rsid <- label
+  SNP.df <- as.data.frame(subsetByOverlaps(x = SNP, ranges = region))
   start.pos <- start(x = region)
   end.pos <- end(x = region)
   chromosome <- seqnames(x = region)
