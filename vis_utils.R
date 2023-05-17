@@ -156,6 +156,77 @@ SetIfNull <- function(x, y) {
   }
 }
 
+## plot the interaction loop
+LoopPlot <- function(
+    loop, # GRanges object with scores stored in an extra column
+    region,
+    min.cutoff = 0,
+    sep = c("-", "-"),
+    extend.upstream = 0,
+    extend.downstream = 0
+) {
+  if (!is(object = region, class2 = "GRanges")) {
+    region <- Signac::StringToGRanges(region, sep=sep)
+  }
+  chromosome <- seqnames(x = region)
+  
+  # extract loop information
+  if (length(x = loop) == 0) {
+    return(NULL)
+  }
+  
+  # subset to those in region
+  loop.keep <- subsetByOverlaps(x = loop, ranges = region)
+  
+  # filter out loops below threshold
+  loop.df <- as.data.frame(x = loop.keep)
+  loop.df <- loop.df[abs(x = loop.df$score) > min.cutoff, ]
+  
+  # remove loops outside region
+  loop.df <- loop.df[loop.df$start >= start(x = region) & loop.df$end <= end(x = region), ]
+  
+  # plot
+  if (nrow(x = loop.df) > 0) {
+    if (!requireNamespace(package = "ggforce", quietly = TRUE)) {
+      warning("Please install ggforce to enable loopPlot plotting: ",
+              "install.packages('ggforce')")
+      p <- ggplot(data = loop.df)
+    } else {
+      # convert to format for geom_bezier
+      loop.df$group <- seq_len(length.out = nrow(x = loop.df))
+      df <- data.frame(
+        x = c(loop.df$start,
+              (loop.df$start + loop.df$end) / 2,
+              loop.df$end),
+        y = c(rep(x = 0, nrow(x = loop.df)),
+              rep(x = -1, nrow(x = loop.df)),
+              rep(x = 0, nrow(x = loop.df))),
+        group = rep(x = loop.df$group, 3),
+        score = rep(loop.df$score, 3)
+      )
+      min.color <- min(0, min(df$score))
+      p <- ggplot(data = df) +
+        ggforce::geom_bezier(
+          mapping = aes_string(x = "x", y = "y", group = "group", color = "score")
+        ) +
+        geom_hline(yintercept = 0, color = 'grey') +
+        scale_color_gradient2(low = "red", mid = "grey", high = "blue",
+                              limits = c(min.color, max(df$score)),
+                              n.breaks = 3)
+    }
+  } else {
+    p <- ggplot(data = loop.df)
+  }
+  p <- p +
+    theme_classic() +
+    theme(axis.ticks.y = element_blank(),
+          axis.text.y = element_blank()) +
+    ylab("Loops") +
+    xlab(label = paste0(chromosome, " position (bp)")) +
+    xlim(c(start(x = region), end(x = region)))
+  return(p)
+}
+
 PeakPlot.2 <- function(
   region,
   peaks, # a GRanges object containing peaks and group.by information
