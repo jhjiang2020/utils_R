@@ -573,7 +573,7 @@ plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
   p <- ggplot(data.frame(nOverlaps=nBGOverlaps), aes(x=nOverlaps)) +
     geom_histogram(aes(y=..density..), binwidth = binwidth) +
     geom_density()+
-    geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", size=2)+
+    geom_vline(xintercept = ztest.list[[1]]$Obs.overlaps, color = "red", linetype="dashed", linewidth=2)+
     ggtitle(label=title,
             subtitle= pval.label) + 
     theme_bw(base_size = 15,base_rect_size = 2, base_line_size = 0.2) + 

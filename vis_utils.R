@@ -42,7 +42,7 @@ SNPPlot <- function(
       #aes_string(color = SetIfNull(x = group.by, y = "color"))
     ) +
       geom_segment(aes(x = (start+end)/2, y = -0.3, xend = (start+end)/2, yend = 0.3, color=color),
-                   size = 1,
+                   linewidth = 1,
                    data = SNP.df) +
       geom_text_repel(
         data = SNP.df,
@@ -254,7 +254,7 @@ PeakPlot.2 <- function(
       aes_string(color = SetIfNull(x = group.by, y = "color"))
     ) +
       geom_segment(aes(x = start, y = 0, xend = end, yend = 0),
-                   size = 2,
+                   linewidth = 2,
                    data = peak.df)
   } else {
     # no peaks present in region, make empty panel
@@ -340,7 +340,7 @@ AnnotationPlot.2 <- function(object, region, mode = "gene") {
           color = "strand"
         ),
         show.legend = FALSE,
-        size = 3
+        linewidth = 3
       ) +
       # gene body
       geom_segment(
@@ -353,7 +353,7 @@ AnnotationPlot.2 <- function(object, region, mode = "gene") {
           color = "strand"
         ),
         show.legend = FALSE,
-        size = 1/2
+        linewidth = 1/2
       )
     if (nrow(x = annotation_df_list$plus) > 0) {
       # forward strand arrows
@@ -373,7 +373,7 @@ AnnotationPlot.2 <- function(object, region, mode = "gene") {
           length = unit(x = 0.04, units = "inches")
         ),
         show.legend = FALSE,
-        size = 1/2
+        linewidth = 1/2
       )
     }
     if (nrow(x = annotation_df_list$minus) > 0) {
@@ -394,7 +394,7 @@ AnnotationPlot.2 <- function(object, region, mode = "gene") {
           length = unit(x = 0.04, units = "inches")
         ),
         show.legend = FALSE,
-        size = 1/2
+        linewidth = 1/2
       )
     }
     # label genes
