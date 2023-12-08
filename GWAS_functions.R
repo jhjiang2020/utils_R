@@ -559,12 +559,12 @@ plot_enrichment <- function(ztest.list, ## list object returned by Peak Z test
   
   
   if(!perm.p){
-    pval <- round(ztest.list[[1]]$pval.z,4)
+    pval <- format(enr.eqtl[[1]]$pval.z, digits = 4)
   }else{
-    pval <- round(ztest.list[[1]]$pval.perm,4)
+    pval <- format(enr.eqtl[[1]]$pval.perm, digits = 4)
   }
   if(pval == 0){
-    pval.label = "p-value < 0.0001"
+    pval.label = "p-value < 2.2e-16"
   }else{
     pval.label = paste("p-value: ", pval, sep = "")
   }
